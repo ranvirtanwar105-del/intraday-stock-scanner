@@ -28,7 +28,7 @@ UNIVERSE = [
 # ---------------- HELPERS ---------------- #
 def load(symbol):
     df = yf.download(symbol, period=f"{LOOKBACK}d", progress=False)
-    if df is None or df.empty or len(df) < 40:
+    if df is None or df.empty or len(df) < 20:  # ensure enough data
         return None
     return df.dropna()
 
@@ -42,13 +42,13 @@ def normalize(value, low, high):
 # ---------------- SCORING ---------------- #
 def score_stock(symbol, market_df):
     df = load(symbol)
-    if df is None or df.empty:
+    if df is None:
         return None
 
     # Safe retrieval of last close & volume
     try:
-        last_close = float(df["Close"].iloc[-1])
-        last_volume = float(df["Volume"].iloc[-1])
+        last_close = float(df["Close"].iloc[-1:][0])
+        last_volume = float(df["Volume"].iloc[-1:][0])
     except:
         return None
 
@@ -59,12 +59,16 @@ def score_stock(symbol, market_df):
     # Intraday return
     ir = (df["Close"] - df["Open"]) / df["Open"]
 
-    # Indicators
-    atr = AverageTrueRange(df["High"], df["Low"], df["Close"], 14).average_true_range()
-    rsi = RSIIndicator(df["Close"], 14).rsi()
-    ema9 = EMAIndicator(df["Close"], 9).ema_indicator()
-    ema21 = EMAIndicator(df["Close"], 21).ema_indicator()
-    ema50 = EMAIndicator(df["Close"], 50).ema_indicator()
+    # Indicators (with try/except to skip bad symbols)
+    try:
+        atr = AverageTrueRange(df["High"], df["Low"], df["Close"], 14).average_true_range()
+        rsi = RSIIndicator(df["Close"], 14).rsi()
+        ema9 = EMAIndicator(df["Close"], 9).ema_indicator()
+        ema21 = EMAIndicator(df["Close"], 21).ema_indicator()
+        ema50 = EMAIndicator(df["Close"], 50).ema_indicator()
+    except Exception as e:
+        print(f"Skipping {symbol} due to indicator error: {e}")
+        return None
 
     rel_vol = last_volume / df["Volume"].rolling(20).mean().iloc[-1]
 
@@ -74,9 +78,9 @@ def score_stock(symbol, market_df):
             market_df["Close"].pct_change()
         ) / market_df["Close"].pct_change().var()
     except:
-        beta = 1  # default if calculation fails
+        beta = 1
 
-    # Scoring
+    # ---------------- SCORING ---------------- #
     score = 0
 
     # Intraday behavior
@@ -141,6 +145,3 @@ if __name__ == "__main__":
         print(df.to_string(index=False))
     else:
         print("No valid picks today.")
-
-    
-  
